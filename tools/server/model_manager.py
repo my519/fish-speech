@@ -34,8 +34,14 @@ class ModelManager:
 
         self.precision = torch.half if half else torch.bfloat16
 
+        # 检查 Intel GPU 是否可用
+        import intel_extension_for_pytorch as ipex
+        ipex.xpu.init()  # 初始化 XPU
+        if hasattr(torch, 'xpu') and torch.xpu.device_count() > 0:
+            self.device = "xpu"
+            logger.info("Intel XPU is available, running on XPU.")
         # Check if MPS or CUDA is available
-        if torch.backends.mps.is_available():
+        elif torch.backends.mps.is_available():
             self.device = "mps"
             logger.info("mps is available, running on mps.")
         elif not torch.cuda.is_available():

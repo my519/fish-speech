@@ -63,12 +63,12 @@ if __name__ == "__main__":
                 elif torch.backends.mps.is_available():
                     args.device = "mps"
                     logger.info("MPS is available, running on MPS.")
-                elif not torch.cuda.is_available():
-                    logger.info("No GPU acceleration available, running on CPU.")
-                    args.device = "cpu"
-                else:
+                elif torch.cuda.is_available():
                     logger.info("CUDA is available, running on CUDA.")
                     args.device = "cuda"
+                else:
+                    logger.info("No GPU acceleration available, running on CPU.")
+                    args.device = "cpu"                    
             except Exception as e:
                 logger.warning(f"Failed to initialize Intel XPU: {e}")
                 if torch.backends.mps.is_available():

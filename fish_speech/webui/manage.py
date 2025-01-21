@@ -731,8 +731,8 @@ with gr.Blocks(
                         info=i18n(
                             "It is recommended to use CUDA, if you have low configuration, use CPU"
                         ),
-                        choices=["cpu", "cuda"],
-                        value="cuda",
+                        choices=["cpu", "xpu", "cuda"],
+                        value="xpu",
                         interactive=True,
                     )
                     label_model = gr.Dropdown(

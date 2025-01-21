@@ -71,6 +71,7 @@ if !errorlevel! equ 0 (
 
 
 :process_flags
+echo mode = !mode!
 for %%p in (!API_FLAGS!) do (
     if not "%%p"=="--!mode!" (
         set "flags=!flags! %%p"
@@ -81,64 +82,17 @@ if not "!flags!"=="" set "flags=!flags:~1!"
 
 echo Debug: flags = !flags!
 
-rem 禁用 CUDA 相关功能
-set CUDA_VISIBLE_DEVICES=-1
-set PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:32
-set TORCH_USE_CUDA_DSA=0
-set TRITON_DISABLE_CUDA=1
-
-rem 设置设备类型
-set "DEVICE=cpu"
-echo Checking available devices...
-
-rem 检查 Intel GPU
-wmic path win32_VideoController get name | findstr /i "Intel" >nul
-if %errorlevel% equ 0 (
-    rem 进一步检查是否支持 XPU
-    %PYTHON_CMD% -c "import intel_extension_for_pytorch as ipex" >nul 2>&1
-    if %errorlevel% equ 0 (
-        echo Intel GPU detected and IPEX is available
-        set "DEVICE=xpu"
-        set "SYCL_DEVICE_FILTER=gpu"
-        set "INTEL_EXTENSION_FOR_PYTORCH_CPU_FALLBACK=0"
-    ) else (
-        echo Intel GPU detected but IPEX is not installed
-        echo Installing IPEX...
-        %PYTHON_CMD% -m pip install intel-extension-for-pytorch
-        if %errorlevel% equ 0 (
-            set "DEVICE=xpu"
-            set "SYCL_DEVICE_FILTER=gpu"
-            set "INTEL_EXTENSION_FOR_PYTORCH_CPU_FALLBACK=0"
-        ) else (
-            echo Failed to install IPEX, falling back to CPU mode
-        )
-    )
-) else (
-    echo No Intel GPU detected, using CPU mode
-)
-
-echo Using device: %DEVICE%
-
-rem 检查 webui 目录是否存在
-if not exist "fish_speech\webui" (
-    echo Creating webui directory...
-    mkdir "fish_speech\webui"
-)
-
 if "!mode!"=="api" (
-    %PYTHON_CMD% -m tools.api_server !flags! --device %DEVICE% --no-cuda
+    echo start api_server
+    %PYTHON_CMD% -m tools.api_server !flags!
 ) else if "!mode!"=="infer" (
-    %PYTHON_CMD% -m tools.webui !flags! --device %DEVICE% --no-cuda
+    echo start infer webui
+    %PYTHON_CMD% tools\run_webui.py !flags!
 )
 
 echo.
-echo Next launch the page...
-if exist "fish_speech\webui\manage.py" (
-    %PYTHON_CMD% fish_speech\webui\manage.py
-) else (
-    echo Warning: manage.py not found in fish_speech\webui directory
-    echo Please make sure the web interface files are properly installed
-)
+echo Next launch the web page...
+%PYTHON_CMD% fish_speech\webui\manage.py
 
 
 :end
