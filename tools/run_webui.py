@@ -35,6 +35,7 @@ def parse_args():
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--half", action="store_true")
     parser.add_argument("--compile", action="store_true")
+    parser.add_argument("--no-cuda", action="store_true")
     parser.add_argument("--max-gradio-length", type=int, default=0)
     parser.add_argument("--theme", type=str, default="light")
 
@@ -45,13 +46,51 @@ if __name__ == "__main__":
     args = parse_args()
     args.precision = torch.half if args.half else torch.bfloat16
 
-    # Check if MPS or CUDA is available
-    if torch.backends.mps.is_available():
-        args.device = "mps"
-        logger.info("mps is available, running on mps.")
-    elif not torch.cuda.is_available():
-        logger.info("CUDA is not available, running on CPU.")
+    # 检查可用设备
+    if args.no_cuda:
+        logger.info("CUDA disabled by --no-cuda flag")
         args.device = "cpu"
+    else:
+        try:
+            # 尝试导入 Intel XPU 支持
+            import intel_extension_for_pytorch as ipex
+            try:
+                # 检查 Intel GPU 是否可用
+                ipex.xpu.init()  # 初始化 XPU
+                if hasattr(torch, 'xpu') and torch.xpu.device_count() > 0:
+                    args.device = "xpu"
+                    logger.info("Intel XPU is available, running on XPU.")
+                elif torch.backends.mps.is_available():
+                    args.device = "mps"
+                    logger.info("MPS is available, running on MPS.")
+                elif not torch.cuda.is_available():
+                    logger.info("No GPU acceleration available, running on CPU.")
+                    args.device = "cpu"
+                else:
+                    logger.info("CUDA is available, running on CUDA.")
+                    args.device = "cuda"
+            except Exception as e:
+                logger.warning(f"Failed to initialize Intel XPU: {e}")
+                if torch.backends.mps.is_available():
+                    args.device = "mps"
+                    logger.info("MPS is available, running on MPS.")
+                elif not torch.cuda.is_available():
+                    logger.info("No GPU acceleration available, running on CPU.")
+                    args.device = "cpu"
+                else:
+                    logger.info("CUDA is available, running on CUDA.")
+                    args.device = "cuda"
+        except ImportError:
+            # 如果没有安装 IPEX，继续检查其他设备
+            if torch.backends.mps.is_available():
+                args.device = "mps"
+                logger.info("MPS is available, running on MPS.")
+            elif not torch.cuda.is_available():
+                logger.info("No GPU acceleration available, running on CPU.")
+                args.device = "cpu"
+            else:
+                logger.info("CUDA is available, running on CUDA.")
+                args.device = "cuda"
 
     logger.info("Loading Llama model...")
     llama_queue = launch_thread_safe_queue(
