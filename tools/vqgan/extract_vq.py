@@ -83,11 +83,13 @@ def process_batch(files: list[Path], model) -> float:
     new_files = []
     max_length = total_time = 0
 
+    device = model.device  # 获取模型所在设备
+
     for file in files:
         try:
             wav, sr = torchaudio.load(
                 str(file), backend=backend
-            )  # Need to install libsox-dev
+            )
         except Exception as e:
             logger.error(f"Error reading {file}: {e}")
             continue
@@ -95,8 +97,9 @@ def process_batch(files: list[Path], model) -> float:
         if wav.shape[0] > 1:
             wav = wav.mean(dim=0, keepdim=True)
 
+        # 修改这里，使用模型的设备而不是硬编码 cuda
         wav = torchaudio.functional.resample(
-            wav.cuda(), sr, model.spec_transform.sample_rate
+            wav.to(device), sr, model.spec_transform.sample_rate
         )[0]
         total_time += len(wav) / model.spec_transform.sample_rate
         max_length = max(max_length, len(wav))
@@ -162,13 +165,23 @@ def main(
             else:
                 visible_devices = visible_devices.split(",")
         else:
-            # Set to empty string to avoid using GPU
-            visible_devices = [""]
+            try:
+                import intel_extension_for_pytorch as ipex
+                if hasattr(torch, 'xpu') and torch.xpu.device_count() > 0:
+                    visible_devices = list(range(torch.xpu.device_count()))
+                else:
+                    visible_devices = [""]
+            except ImportError:
+                visible_devices = [""]
 
         processes = []
         for i in range(num_workers):
             env = os.environ.copy()
-            env["CUDA_VISIBLE_DEVICES"] = str(visible_devices[i % len(visible_devices)])
+            if visible_devices[0] != "":
+                if torch.cuda.is_available():
+                    env["CUDA_VISIBLE_DEVICES"] = str(visible_devices[i % len(visible_devices)])
+                else:
+                    env["ZE_AFFINITY_MASK"] = str(visible_devices[i % len(visible_devices)])
             env["SLURM_PROCID"] = str(i)
             env["SLURM_NTASKS"] = str(num_workers)
 
@@ -203,7 +216,7 @@ def main(
     total_time = 0
     begin_time = time.time()
     processed_files = 0
-    model = get_model(config_name, checkpoint_path)
+    model = get_model(config_name, checkpoint_path, "xpu")  # 使用 XPU
 
     for n_batch, idx in enumerate(range(0, len(files), batch_size)):
         batch = files[idx : idx + batch_size]
